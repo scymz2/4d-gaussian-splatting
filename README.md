@@ -25,6 +25,8 @@ The hardware and software requirements are the same as those of the [3D Gaussian
 git clone https://github.com/fudan-zvg/4d-gaussian-splatting
 cd 4d-gaussian-splatting
 
+# make sure it is cuda-11.6
+
 # firstly create python3.8
 conda create -m realtime4d python=3.8 -y
 conda activate realtime4d
