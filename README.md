@@ -24,8 +24,32 @@ The hardware and software requirements are the same as those of the [3D Gaussian
 ```shell
 git clone https://github.com/fudan-zvg/4d-gaussian-splatting
 cd 4d-gaussian-splatting
-conda env create --file environment.yml
-conda activate 4dgs
+
+# firstly create python3.8
+conda create -m realtime4d python=3.8 -y
+conda activate realtime4d
+
+# install torch, just like Gaussians4D
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --index-url https://download.pytorch.org/whl/cu116
+
+# install other requirements
+pip install tqdm==4.66.1  \
+    torchmetrics==0.11.4  \
+    imagesize==1.4.1  \
+    kornia==0.6.12  \
+    omegaconf==2.3.0 \
+
+# install ninja
+conda install ninja
+
+# and then install local cuda requirements
+cd ~/GS/4d-gaussian-splatting/simple-knn
+rm -rf build dist *.egg-info # 清理旧的构建文件
+pip install .  # 注意，是点 '.' 而不是 '-e .'
+
+cd ~/GS/4d-gaussian-splatting/pointops2
+pip install .
+
 ```
 
 ### Data preparation
