@@ -67,14 +67,15 @@ def validation(dataset, opt, pipe,checkpoint, gaussian_dim, time_duration, rot_4
     print("rendering trajectory ...")
     traj_dir = os.path.join(test_dir, 'traj')
     os.makedirs(traj_dir, exist_ok=True)
-    n_fames = 480
-    cam_traj = generate_path(scene.getTrainCameras(), n_frames=n_fames)
+    n_frames = int(48 * (time_duration[1] - time_duration[0]))
+    cam_traj = generate_path(scene.getTrainCameras(), n_frames=n_frames, time_duration=time_duration, output_dir=test_dir) # Pass test_dir
+    print("len(cam_traj):", len(cam_traj))
     gaussExtractor.reconstruction(cam_traj, test_dir,stage = "trajectory")
     gaussExtractor.export_image(traj_dir,mode = "trajectory")
     create_videos( base_dir =traj_dir,
                    input_dir=traj_dir, 
                    out_name='render_traj', 
-                   num_frames=n_fames)
+                   num_frames=n_frames)
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint, debug_from,
              gaussian_dim, time_duration, num_pts, num_pts_ratio, rot_4d, force_sh_3d, batch_size):

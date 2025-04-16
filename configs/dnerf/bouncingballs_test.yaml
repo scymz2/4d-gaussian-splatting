@@ -7,6 +7,7 @@ force_sh_3d: False
 batch_size: 2
 exhaust_test: True
 start_checkpoint: "output/dnerf/bouncingballs/chkpnt_best.pth"
+val: True
 
 ModelParams:
   sh_degree: 3

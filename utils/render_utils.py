@@ -22,6 +22,8 @@ from PIL import Image
 import mediapy as media
 from matplotlib import cm
 from tqdm import tqdm
+import matplotlib.pyplot as plt # Add import
+from mpl_toolkits.mplot3d import Axes3D # Add import
 
 import torch
 
@@ -171,29 +173,79 @@ def generate_ellipse_path(poses: np.ndarray,
   return np.stack([viewmatrix(p - center, up, p) for p in positions])
 
 
-def generate_path(viewpoint_cameras, n_frames=480):
-  viewpoint_cameras = [viewpoint_cameras[i] for i in range(0, len(viewpoint_cameras), 300)]
+def generate_path(viewpoint_cameras, n_frames=480, time_duration=None, output_dir="output", visual_path=True): # Add visual_path parameter
+  t_min, t_max = time_duration if time_duration is not None else (0.0, 1.0) # Default if not provided
+  # Reduce the number of cameras used for PCA and path generation for efficiency/stability if needed
+  step = max(1, len(viewpoint_cameras) // 50) # Use up to 50 cameras for path fitting
+  selected_cameras = [viewpoint_cameras[i] for i in range(0, len(viewpoint_cameras), step)]
   
-  c2ws = np.array([np.linalg.inv(np.asarray((cam[1].world_view_transform.T).cpu().numpy())) for cam in viewpoint_cameras])
-  pose = c2ws[:,:3,:] @ np.diag([1, -1, -1, 1])
-  pose_recenter, colmap_to_world_transform = transform_poses_pca(pose)
+  # Extract original camera poses (world-to-camera) and convert to camera-to-world
+  c2ws_original = np.array([np.linalg.inv(np.asarray((cam[1].world_view_transform.T).cpu().numpy())) for cam in selected_cameras])
+  # Apply coordinate system transformation if necessary (common in COLMAP datasets)
+  pose_original_transformed = c2ws_original[:,:3,:] @ np.diag([1, -1, -1, 1])
+  # Recenter poses using PCA
+  pose_recenter, colmap_to_world_transform = transform_poses_pca(pose_original_transformed)
 
-  # generate new poses
-  new_poses = generate_ellipse_path(poses=pose_recenter, n_frames=n_frames)
-  # warp back to orignal scale
-  new_poses = np.linalg.inv(colmap_to_world_transform) @ pad_poses(new_poses)
+  # generate new poses in the recentered space
+  new_poses_recentered = generate_ellipse_path(poses=pose_recenter, n_frames=n_frames)
+  # warp back to original scale/coordinate system
+  new_poses_world = np.linalg.inv(colmap_to_world_transform) @ pad_poses(new_poses_recentered)
+
+  # --- Visualization Code Start ---
+  # Extract original camera positions (world coordinates)
+  original_positions = c2ws_original[:, :3, 3]
+
+  # Extract interpolated camera positions (world coordinates)
+  interpolated_positions = new_poses_world[:, :3, 3]
+
+  # Create 3D plot
+  fig = plt.figure()
+  ax = fig.add_subplot(111, projection='3d')
+
+  # Plot original camera positions in green
+  ax.scatter(original_positions[:, 0], original_positions[:, 1], original_positions[:, 2], c='g', marker='o', label='Original Cameras')
+
+  # Plot interpolated camera positions in red
+  ax.scatter(interpolated_positions[:, 0], interpolated_positions[:, 1], interpolated_positions[:, 2], c='r', marker='^', label='Interpolated Cameras')
+
+  # Add labels and legend
+  ax.set_xlabel('X')
+  ax.set_ylabel('Y')
+  ax.set_zlabel('Z')
+  ax.set_title('Camera Positions Visualization')
+  ax.legend()
+  # Optional: Set equal aspect ratio
+  # ax.set_aspect('equal', adjustable='box') # May cause issues depending on data scale
+  
+  # Save the plot to a file in the specified output directory
+  os.makedirs(output_dir, exist_ok=True) # Ensure the output directory exists
+  save_path = os.path.join(output_dir, "camera_positions_visualization.png")
+  plt.savefig(save_path)
+  print(f"Camera position visualization saved to: {save_path}")
+  # Note: This saves a static 2D image of the 3D plot. 
+  # You can open the saved file (e.g., 'output/camera_positions_visualization.png') 
+  # using any standard image viewer.
+
+  if visual_path: # Conditionally display the plot
+    plt.show() # Display the plot interactively
+  # --- Visualization Code End ---
 
   traj = []
-  for i, c2w in enumerate(new_poses):
-      c2w = c2w @ np.diag([1, -1, -1, 1])
-      cam = copy.deepcopy(viewpoint_cameras[0][1])
+  for i, c2w in enumerate(new_poses_world):
+      # Apply coordinate system transformation back if needed
+      c2w_transformed = c2w @ np.diag([1, -1, -1, 1])
+      cam = copy.deepcopy(viewpoint_cameras[0][1]) # Use the first camera as a template
       cam.image_height = int(cam.image_height / 2) * 2
       cam.image_width = int(cam.image_width / 2) * 2
-      cam.world_view_transform = torch.from_numpy(np.linalg.inv(c2w).T).float().cuda()
+      # Convert back to world-to-camera for the Camera object
+      world_view_transform = torch.from_numpy(np.linalg.inv(c2w_transformed).T).float().cuda()
+      cam.world_view_transform = world_view_transform
       cam.full_proj_transform = (cam.world_view_transform.unsqueeze(0).bmm(cam.projection_matrix.cuda().unsqueeze(0))).squeeze(0)
       cam.camera_center = cam.world_view_transform.inverse()[3, :3]
-      cam.timestamp =10.0/n_frames*i
-      traj.append((cam))
+      # Assign timestamp
+      cam.timestamp = t_min + (t_max - t_min) * i / (n_frames - 1) if n_frames > 1 else t_min
+      # print(f"Camera {i}: Timestamp {cam.timestamp:.4f}") # Keep print if needed for debugging
+      traj.append((cam)) # Append the camera object directly
 
   return traj
 
@@ -256,7 +308,7 @@ def create_videos(base_dir, input_dir, out_name, num_frames=480):
         if k == 'color':
           img_file = os.path.join(input_dir, 'renders', f'{idx_to_str(idx)}.{file_ext}')
         elif k=='flow':
-          img_file = os.path.join(input_dir, 'flow', f'{idx_to_str(idx)}.{file_ext}')
+          img_file = os.path.join(input_dir, 'flow', f'{k}_{idx_to_str(idx)}.{file_ext}')
         else:
           img_file = os.path.join(input_dir, 'vis', f'{k}_{idx_to_str(idx)}.{file_ext}')
 
