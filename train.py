@@ -443,11 +443,14 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    if cfg.val == False:
+    if args.val == False:
+        print("Training mode...")
         training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.start_checkpoint, args.debug_from,
                 args.gaussian_dim, args.time_duration, args.num_pts, args.num_pts_ratio, args.rot_4d, args.force_sh_3d, args.batch_size)
     else:
-        validation(lp.extract(args), op.extract(args), pp.extract(args),args.start_checkpoint,args.gaussian_dim, 
+        print("Validation mode...")
+        start_checkpoint = args.start_checkpoint if args.start_checkpoint else os.path.join(args.model_path, "chkpnt_best.pth")
+        validation(lp.extract(args), op.extract(args), pp.extract(args),start_checkpoint,args.gaussian_dim, 
                    args.time_duration,args.rot_4d, args.force_sh_3d, args.num_pts, args.num_pts_ratio)
         
 
